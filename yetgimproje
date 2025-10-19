@@ -1,0 +1,171 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Oct 19 00:55:50 2025
+
+@author: Zehranur
+"""
+import tkinter as tk
+from tkinter import ttk, messagebox
+import json
+from datetime import datetime
+
+#Sınıflar Kısmı
+class Harcama:
+    def __init__(self, tutar, kategori, tarih=None):
+        self.tutar = tutar
+        self.kategori = kategori
+        self.tarih = tarih or datetime.now().strftime("%Y-%m-%d")
+
+    def __str__(self):
+        return f"{self.tarih} - {self.kategori}: {self.tutar} TL"
+
+class SabitHarcama(Harcama):
+    def __str__(self):
+        return f"Sabit Harcama - {self.tarih} - {self.kategori}: {self.tutar} TL"
+
+class DegiskenHarcama(Harcama):
+    def __str__(self):
+        return f"Değişken Harcama - {self.tarih} - {self.kategori}: {self.tutar} TL"
+
+class Gelir:
+    def __init__(self, tutar, kaynak, tarih=None):
+        self.tutar = tutar
+        self.kaynak = kaynak
+        self.tarih = tarih or datetime.now().strftime("%Y-%m-%d")
+
+    def __str__(self):
+        return f"{self.tarih} - {self.kaynak}: {self.tutar} TL"
+
+class Butce:
+    def __init__(self):
+        self.gelirler = []
+        self.harcama = []
+
+    def gelir_ekle(self, gelir):
+        self.gelirler.append(gelir)
+
+    def harcama_ekle(self, harcama):
+        self.harcama.append(harcama)
+
+    def bakiye_hesapla(self):
+        toplam_gelir = sum(g.tutar for g in self.gelirler)
+        toplam_harcama = sum(h.tutar for h in self.harcama)
+        return toplam_gelir - toplam_harcama
+
+    def kategori_raporu(self):
+        rapor = {}
+        for h in self.harcama:
+            rapor[h.kategori] = rapor.get(h.kategori, 0) + h.tutar
+        return rapor
+
+    def gelir_raporu(self):
+        rapor = {}
+        for g in self.gelirler:
+            rapor[g.kaynak] = rapor.get(g.kaynak, 0) + g.tutar
+        return rapor
+
+    def kaydet(self, dosya_adi="butce_gui.json"):
+        veri = {
+            "gelirler": [{"tutar": g.tutar, "kaynak": g.kaynak, "tarih": g.tarih} for g in self.gelirler],
+            "harcama": [{"tutar": h.tutar, "kategori": h.kategori, "tarih": h.tarih, "tip": type(h).__name__} for h in self.harcama]
+        }
+        with open(dosya_adi, "w", encoding="utf-8") as f:
+            json.dump(veri, f, ensure_ascii=False, indent=4)
+
+    def yukle(self, dosya_adi="butce_gui.json"):
+        try:
+            with open(dosya_adi, "r", encoding="utf-8") as f:
+                veri = json.load(f)
+            self.gelirler = [Gelir(d["tutar"], d["kaynak"], d["tarih"]) for d in veri["gelirler"]]
+            self.harcama = []
+            for h in veri["harcama"]:
+                if h["tip"] == "SabitHarcama":
+                    self.harcama.append(SabitHarcama(h["tutar"], h["kategori"], h["tarih"]))
+                else:
+                    self.harcama.append(DegiskenHarcama(h["tutar"], h["kategori"], h["tarih"]))
+        except FileNotFoundError:
+            pass
+
+# GUI Kısmı 
+butcem = Butce()
+butcem.yukle()
+
+def gelir_ekle():
+    try:
+        tutar = float(gelir_tutar.get())
+        kaynak = gelir_kaynak.get()
+        if tutar <= 0 or not kaynak:
+            messagebox.showerror("Hata", "Geçerli bir değer girin.")
+            return
+        butcem.gelir_ekle(Gelir(tutar, kaynak))
+        gelir_tutar.delete(0, tk.END)
+        gelir_kaynak.delete(0, tk.END)
+        update_rapor()
+    except ValueError:
+        messagebox.showerror("Hata", "Tutar sayı olmalı.")
+
+def harcama_ekle(tip):
+    try:
+        tutar = float(harcama_tutar.get())
+        kategori = harcama_kategori.get()
+        if tutar <= 0 or not kategori:
+            messagebox.showerror("Hata", "Geçerli bir değer girin.")
+            return
+        if tip == "sabit":
+            butcem.harcama_ekle(SabitHarcama(tutar, kategori))
+        else:
+            butcem.harcama_ekle(DegiskenHarcama(tutar, kategori))
+        harcama_tutar.delete(0, tk.END)
+        harcama_kategori.delete(0, tk.END)
+        update_rapor()
+    except ValueError:
+        messagebox.showerror("Hata", "Tutar sayı olmalı.")
+
+def update_rapor():
+    rapor_text.delete(1.0, tk.END)
+    rapor_text.insert(tk.END, "Gelirler:\n")
+    for g in butcem.gelirler:
+        rapor_text.insert(tk.END, f"{g}\n")
+    rapor_text.insert(tk.END, "\nHarcamalar:\n")
+    for h in butcem.harcama:
+        rapor_text.insert(tk.END, f"{h}\n")
+    rapor_text.insert(tk.END, "\nKategori Bazlı Harcamalar:\n")
+    for k, t in butcem.kategori_raporu().items():
+        rapor_text.insert(tk.END, f"{k}: {t} TL\n")
+    rapor_text.insert(tk.END, f"\nToplam Bakiye: {butcem.bakiye_hesapla()} TL\n")
+
+def kaydet():
+    butcem.kaydet()
+    messagebox.showinfo("Bilgi", "Veriler kaydedildi.")
+
+root = tk.Tk()
+root.title("Kişisel Finans / Bütçe Takip Sistemi")
+
+# Gelir Kısmı
+tk.Label(root, text="Gelir Tutarı:").grid(row=0, column=0)
+gelir_tutar = tk.Entry(root)
+gelir_tutar.grid(row=0, column=1)
+tk.Label(root, text="Kaynak:").grid(row=0, column=2)
+gelir_kaynak = tk.Entry(root)
+gelir_kaynak.grid(row=0, column=3)
+tk.Button(root, text="Gelir Ekle", command=gelir_ekle).grid(row=0, column=4)
+
+# Harcama Kısmı
+tk.Label(root, text="Harcama Tutarı:").grid(row=1, column=0)
+harcama_tutar = tk.Entry(root)
+harcama_tutar.grid(row=1, column=1)
+tk.Label(root, text="Kategori:").grid(row=1, column=2)
+harcama_kategori = tk.Entry(root)
+harcama_kategori.grid(row=1, column=3)
+tk.Button(root, text="Sabit Harcama Ekle", command=lambda: harcama_ekle("sabit")).grid(row=1, column=4)
+tk.Button(root, text="Değişken Harcama Ekle", command=lambda: harcama_ekle("degisken")).grid(row=1, column=5)
+
+# Rapor Kısmı 
+rapor_text = tk.Text(root, width=80, height=20)
+rapor_text.grid(row=2, column=0, columnspan=6)
+
+tk.Button(root, text="Kaydet", command=kaydet).grid(row=3, column=0, columnspan=6)
+
+update_rapor()
+root.mainloop()
+
